@@ -2,6 +2,8 @@
 
 17 skills following the [Agent Skills](https://agentskills.io) open standard. Works with Claude Code, Claude.ai, Cursor, Codex, GitHub Copilot, Gemini CLI, and 30+ other tools.
 
+**Where each skill works best** (terminals/IDEs vs Claude Web vs ChatGPT): [PLATFORM.md](PLATFORM.md).
+
 ## Skills
 
 | Skill | What it does |
@@ -64,6 +66,10 @@ Or use the CLI:
 ```bash
 npx @intellexerunt/plugin skills --package ./zips
 ```
+
+## Programmatic loading
+
+The `@intellexerunt/plugin` loader checks, in order: `repoRoot` (API argument) → `INTELLEXERUNT_SKILLS_ROOT` → bundled package `skills/` → `./skills` and `./.claude/skills` under `process.cwd()`.
 
 ## Docs
 

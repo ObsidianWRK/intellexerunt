@@ -2,7 +2,6 @@
  * @intellexerunt/plugin — search, orchestration, and agent skills.
  *
  * BM25 search, thread weaving, compaction, dispatch, teammates, skills.
- * One package. No dead code.
  */
 
 // Search
@@ -43,7 +42,10 @@ export {
 } from "./linear.ts";
 
 // Skills
-export { loadSkill, listSkills, SKILL_REGISTRY, exportSkill, exportAllSkills, packageForClaudeWeb } from "./skills.ts";
+export {
+  loadSkill, listSkills, SKILL_REGISTRY, exportSkill, exportAllSkills, packageForClaudeWeb,
+  resolveSkillMarkdownPath, CHATGPT_EXCLUDED_SKILLS,
+} from "./skills.ts";
 export type { SkillPlatform, PlatformSkill } from "./skills.ts";
 
 // Types

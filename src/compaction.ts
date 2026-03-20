@@ -12,7 +12,7 @@ export interface CompactionTrigger { type: "input_tokens"; value: number; }
 export interface CompactionEdit { type: typeof COMPACTION_TYPE; trigger?: CompactionTrigger; pause_after_compaction?: boolean; instructions?: string; }
 export interface ContextManagementConfig { edits: CompactionEdit[]; }
 
-const TUC_COMPACTION_INSTRUCTIONS = [
+const DEFAULT_COMPACTION_INSTRUCTIONS = [
   "Summarize the conversation preserving:",
   "- Active task: what is being built/fixed, current branch, files modified",
   "- Search results: key retrieval findings, queries run, sources that matched",
@@ -34,7 +34,7 @@ export function buildCompactionConfig(options?: {
       type: COMPACTION_TYPE,
       trigger: { type: "input_tokens", value: trigger },
       pause_after_compaction: options?.pauseAfterCompaction ?? false,
-      instructions: options?.instructions ?? TUC_COMPACTION_INSTRUCTIONS,
+      instructions: options?.instructions ?? DEFAULT_COMPACTION_INSTRUCTIONS,
     }],
   };
 }
