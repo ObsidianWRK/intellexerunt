@@ -53,6 +53,106 @@ export async function listSkills(repoRoot?: string): Promise<string[]> {
   }
 }
 
+// ── Multi-Platform Export ──────────────────────────────────────────────
+
+export type SkillPlatform = "claude-code" | "claude-web" | "chatgpt";
+
+export interface PlatformSkill {
+  name: string;
+  description: string;
+  /** System prompt / custom instructions for this platform. */
+  instructions: string;
+  /** ChatGPT conversation starters. */
+  starters?: string[];
+  /** Claude Web project knowledge file content. */
+  knowledge?: string;
+}
+
+/** Skills that require CLI tools / agents and cannot be ported. */
+const CLI_ONLY_SKILLS = new Set([
+  "orchestrate", "run-cursor", "run-codex", "run-devin", "run-bugbot",
+  "setup-browser-cookies", "browse-url", "fetch-tweet",
+]);
+
+/** Strip Claude Code-specific syntax from skill body. */
+function stripCodeSyntax(body: string): string {
+  return body
+    .replace(/^!`[^`]+`$/gm, "") // Remove !`cmd` injections
+    .replace(/<platform-ref[^/]*\/>/g, "") // Remove <platform-ref />
+    .replace(/\$ARGUMENTS/g, "[user's request]")
+    .replace(/context:\s*fork\n?/g, "")
+    .replace(/agent:\s*\w+\n?/g, "")
+    .replace(/\n{3,}/g, "\n\n") // Collapse blank lines
+    .trim();
+}
+
+/** Convert a skill to a specific platform format. */
+export async function exportSkill(
+  name: string,
+  platform: SkillPlatform,
+  repoRoot?: string,
+): Promise<PlatformSkill | null> {
+  if (platform !== "claude-code" && CLI_ONLY_SKILLS.has(name)) return null;
+
+  const skill = await loadSkill(name, repoRoot);
+  const desc = typeof skill.frontmatter.description === "string"
+    ? skill.frontmatter.description : name;
+  const body = stripCodeSyntax(skill.content);
+
+  if (platform === "claude-code") {
+    return { name, description: desc, instructions: skill.content };
+  }
+
+  const entry = SKILL_REGISTRY.find((s) => s.name === name);
+  const triggers = entry?.triggers ?? [];
+
+  if (platform === "chatgpt") {
+    return {
+      name,
+      description: desc,
+      instructions: [
+        `# ${name}`,
+        "",
+        `You are a specialized assistant for: ${desc}`,
+        "",
+        body,
+        "",
+        "Note: You do not have access to CLI tools, file editing, or agent delegation.",
+        "Focus on analysis, reasoning, and actionable recommendations.",
+      ].join("\n"),
+      starters: triggers.map((t) => t.charAt(0).toUpperCase() + t.slice(1)),
+    };
+  }
+
+  // claude-web
+  return {
+    name,
+    description: desc,
+    instructions: [
+      `# ${name}`,
+      "",
+      body,
+      "",
+      "Adapt your approach: you have thinking, analysis, and web search,",
+      "but no file editing, CLI tools, or agent delegation.",
+    ].join("\n"),
+  };
+}
+
+/** Export all portable skills for a platform. */
+export async function exportAllSkills(
+  platform: SkillPlatform,
+  repoRoot?: string,
+): Promise<PlatformSkill[]> {
+  const names = await listSkills(repoRoot);
+  const results: PlatformSkill[] = [];
+  for (const name of names) {
+    const skill = await exportSkill(name, platform, repoRoot);
+    if (skill) results.push(skill);
+  }
+  return results;
+}
+
 /** Registered skills for NPX skills directory (agentskills.io). */
 export const SKILL_REGISTRY = [
   { name: "autoresearch", description: "Autonomous goal-directed iteration loop", triggers: ["autoresearch", "auto optimize", "evolve", "keep improving"] },

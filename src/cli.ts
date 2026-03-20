@@ -25,9 +25,17 @@ async function main() {
       break;
     }
     case "skills": {
-      const { listSkills, SKILL_REGISTRY } = await import("./skills.ts");
+      const { listSkills, SKILL_REGISTRY, exportAllSkills } = await import("./skills.ts");
       if (args[0] === "--registry") {
         console.log(JSON.stringify(SKILL_REGISTRY, null, 2));
+      } else if (args[0] === "--export") {
+        const platform = args[1] as "chatgpt" | "claude-web" | "claude-code";
+        if (!platform || !["chatgpt", "claude-web", "claude-code"].includes(platform)) {
+          console.error("Usage: intellexerunt skills --export <chatgpt|claude-web|claude-code>");
+          process.exit(1);
+        }
+        const skills = await exportAllSkills(platform);
+        console.log(JSON.stringify(skills, null, 2));
       } else {
         const skills = await listSkills();
         for (const s of skills) console.log(s);
@@ -59,7 +67,8 @@ Commands:
   context <prompt>   Dynamic context injection (symbol lookup)
   route <task>       Route a task to a harness
   skills             List available skills
-  skills --registry  Print NPX skill registry (JSON)`);
+  skills --registry  Print NPX skill registry (JSON)
+  skills --export <platform>  Export for chatgpt|claude-web|claude-code`);
   }
 }
 
