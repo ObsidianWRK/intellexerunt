@@ -10,7 +10,7 @@ export const ROUTE_TO_SKILL: Record<string, string> = {
   browse: "browse-url", tweet: "fetch-tweet", autoresearch: "autoresearch",
   design: "design-consultation", "doc-release": "document-release",
   cookies: "setup-browser-cookies", orchestrate: "orchestrate",
-  cursor: "run-cursor", codex: "run-codex", "review-pipeline": "review-orchestrator",
+  cursor: "run-cursor", codex: "run-codex", "review-pipeline": "review",
 };
 
 export const VALID_ROUTES = new Set(Object.keys(ROUTE_TO_SKILL));

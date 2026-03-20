@@ -60,7 +60,7 @@ export async function listSkills(repoRoot?: string): Promise<string[]> {
  * - "agent-skills": Native SKILL.md (Claude Code, Claude.ai, Cursor, Codex, 30+ tools via agentskills.io)
  * - "chatgpt": Custom instructions + conversation starters (no SKILL.md support)
  */
-export type SkillPlatform = "agent-skills" | "chatgpt";
+export type SkillPlatform = "agent-skills" | "chatgpt" | "claude-web";
 
 export interface PlatformSkill {
   name: string;
@@ -101,7 +101,7 @@ export async function exportSkill(
   const desc = typeof skill.frontmatter.description === "string"
     ? skill.frontmatter.description : name;
 
-  if (platform === "agent-skills") {
+  if (platform === "agent-skills" || platform === "claude-web") {
     // Native SKILL.md — read raw file content (frontmatter + body)
     const root = repoRoot ?? process.cwd();
     const raw = await (await import("node:fs/promises")).readFile(

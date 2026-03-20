@@ -29,9 +29,9 @@ async function main() {
       if (args[0] === "--registry") {
         console.log(JSON.stringify(SKILL_REGISTRY, null, 2));
       } else if (args[0] === "--export") {
-        const platform = args[1] as "agent-skills" | "chatgpt";
-        if (!platform || !["agent-skills", "chatgpt"].includes(platform)) {
-          console.error("Usage: intellexerunt skills --export <agent-skills|chatgpt>");
+        const platform = args[1] as "agent-skills" | "chatgpt" | "claude-web";
+        if (!platform || !["agent-skills", "chatgpt", "claude-web"].includes(platform)) {
+          console.error("Usage: intellexerunt skills --export <agent-skills|chatgpt|claude-web>");
           process.exit(1);
         }
         const skills = await exportAllSkills(platform);
@@ -73,7 +73,7 @@ Commands:
   route <task>       Route a task to a harness
   skills             List available skills
   skills --registry  Print NPX skill registry (JSON)
-  skills --export <platform>  Export for agent-skills|chatgpt
+  skills --export <platform>  Export for agent-skills|chatgpt|claude-web
   skills --package [dir]      Zip skills for Claude.ai upload`);
   }
 }

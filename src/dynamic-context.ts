@@ -7,8 +7,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { toFtsQuery } from "./search.ts";
-
 const STOP_WORDS = new Set([
   "the", "a", "an", "to", "for", "in", "on", "of", "is", "it", "this", "that",
   "with", "and", "or", "but", "not", "from", "be", "as", "at", "by", "we",
