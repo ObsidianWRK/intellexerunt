@@ -43,7 +43,7 @@ export {
 } from "./linear.ts";
 
 // Skills
-export { loadSkill, listSkills, SKILL_REGISTRY, exportSkill, exportAllSkills } from "./skills.ts";
+export { loadSkill, listSkills, SKILL_REGISTRY, exportSkill, exportAllSkills, packageForClaudeWeb } from "./skills.ts";
 export type { SkillPlatform, PlatformSkill } from "./skills.ts";
 
 // Types

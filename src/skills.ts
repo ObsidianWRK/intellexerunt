@@ -55,34 +55,37 @@ export async function listSkills(repoRoot?: string): Promise<string[]> {
 
 // ── Multi-Platform Export ──────────────────────────────────────────────
 
-export type SkillPlatform = "claude-code" | "claude-web" | "chatgpt";
+/**
+ * Platform targets:
+ * - "agent-skills": Native SKILL.md (Claude Code, Claude.ai, Cursor, Codex, 30+ tools via agentskills.io)
+ * - "chatgpt": Custom instructions + conversation starters (no SKILL.md support)
+ */
+export type SkillPlatform = "agent-skills" | "chatgpt";
 
 export interface PlatformSkill {
   name: string;
   description: string;
-  /** System prompt / custom instructions for this platform. */
+  /** The skill content (SKILL.md raw for agent-skills, converted for chatgpt). */
   instructions: string;
-  /** ChatGPT conversation starters. */
+  /** ChatGPT conversation starters (up to 4). */
   starters?: string[];
-  /** Claude Web project knowledge file content. */
-  knowledge?: string;
 }
 
-/** Skills that require CLI tools / agents and cannot be ported. */
-const CLI_ONLY_SKILLS = new Set([
+/** Skills that require shell/agent infra unavailable on ChatGPT. */
+const CHATGPT_EXCLUDED = new Set([
   "orchestrate", "run-cursor", "run-codex", "run-devin", "run-bugbot",
   "setup-browser-cookies", "browse-url", "fetch-tweet",
 ]);
 
-/** Strip Claude Code-specific syntax from skill body. */
-function stripCodeSyntax(body: string): string {
+/** Strip Claude Code-specific syntax for ChatGPT export. */
+function stripForChatGPT(body: string): string {
   return body
-    .replace(/^!`[^`]+`$/gm, "") // Remove !`cmd` injections
-    .replace(/<platform-ref[^/]*\/>/g, "") // Remove <platform-ref />
+    .replace(/^!`[^`]+`$/gm, "")
+    .replace(/<platform-ref[^/]*\/>/g, "")
     .replace(/\$ARGUMENTS/g, "[user's request]")
     .replace(/context:\s*fork\n?/g, "")
     .replace(/agent:\s*\w+\n?/g, "")
-    .replace(/\n{3,}/g, "\n\n") // Collapse blank lines
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
@@ -92,54 +95,40 @@ export async function exportSkill(
   platform: SkillPlatform,
   repoRoot?: string,
 ): Promise<PlatformSkill | null> {
-  if (platform !== "claude-code" && CLI_ONLY_SKILLS.has(name)) return null;
+  if (platform === "chatgpt" && CHATGPT_EXCLUDED.has(name)) return null;
 
   const skill = await loadSkill(name, repoRoot);
   const desc = typeof skill.frontmatter.description === "string"
     ? skill.frontmatter.description : name;
-  const body = stripCodeSyntax(skill.content);
 
-  if (platform === "claude-code") {
-    return { name, description: desc, instructions: skill.content };
+  if (platform === "agent-skills") {
+    // Native SKILL.md — read raw file content (frontmatter + body)
+    const root = repoRoot ?? process.cwd();
+    const raw = await (await import("node:fs/promises")).readFile(
+      join(root, ".claude", "skills", name, "SKILL.md"), "utf-8",
+    );
+    return { name, description: desc, instructions: raw };
   }
 
+  // ChatGPT: strip CLI syntax, add preamble
+  const body = stripForChatGPT(skill.content);
   const entry = SKILL_REGISTRY.find((s) => s.name === name);
   const triggers = entry?.triggers ?? [];
-
-  if (platform === "chatgpt") {
-    return {
-      name,
-      description: desc,
-      instructions: [
-        `# ${name}`,
-        "",
-        `You are a specialized assistant for: ${desc}`,
-        "",
-        body,
-        "",
-        "Note: You do not have access to CLI tools, file editing, or agent delegation.",
-        "Focus on analysis, reasoning, and actionable recommendations.",
-      ].join("\n"),
-      starters: triggers.map((t) => t.charAt(0).toUpperCase() + t.slice(1)),
-    };
-  }
-
-  // claude-web
   return {
     name,
     description: desc,
     instructions: [
       `# ${name}`,
-      "",
+      "", `You are a specialized assistant for: ${desc}`, "",
       body,
-      "",
-      "Adapt your approach: you have thinking, analysis, and web search,",
-      "but no file editing, CLI tools, or agent delegation.",
+      "", "Note: You do not have access to CLI tools, file editing, or agent delegation.",
+      "Focus on analysis, reasoning, and actionable recommendations.",
     ].join("\n"),
+    starters: triggers.slice(0, 4).map((t) => t.charAt(0).toUpperCase() + t.slice(1)),
   };
 }
 
-/** Export all portable skills for a platform. */
+/** Export all skills for a platform. */
 export async function exportAllSkills(
   platform: SkillPlatform,
   repoRoot?: string,
@@ -151,6 +140,35 @@ export async function exportAllSkills(
     if (skill) results.push(skill);
   }
   return results;
+}
+
+/**
+ * Package skills as zip files for Claude.ai upload.
+ * Claude.ai Settings > Features accepts zip files containing SKILL.md + supporting files.
+ * Writes one zip per skill to outDir.
+ */
+export async function packageForClaudeWeb(
+  outDir: string,
+  repoRoot?: string,
+): Promise<string[]> {
+  const fs = await import("node:fs/promises");
+  const path = await import("node:path");
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const execFileAsync = promisify(execFile);
+
+  const root = repoRoot ?? process.cwd();
+  await fs.mkdir(outDir, { recursive: true });
+  const names = await listSkills(root);
+  const zips: string[] = [];
+
+  for (const name of names) {
+    const skillDir = path.join(root, ".claude", "skills", name);
+    const zipPath = path.join(outDir, `${name}.zip`);
+    await execFileAsync("zip", ["-r", "-j", zipPath, skillDir]);
+    zips.push(zipPath);
+  }
+  return zips;
 }
 
 /** Registered skills for NPX skills directory (agentskills.io). */
