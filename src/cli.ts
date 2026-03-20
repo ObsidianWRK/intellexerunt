@@ -74,7 +74,9 @@ Commands:
   skills             List available skills
   skills --registry  Print NPX skill registry (JSON)
   skills --export <platform>  Export for agent-skills|chatgpt|claude-web
-  skills --package [dir]      Zip skills for Claude.ai upload`);
+  skills --package [dir]      Zip skills for Claude.ai upload
+
+Skills: INTELLEXERUNT_SKILLS_ROOT, bundled skills/, or ./skills / ./.claude/skills`);
   }
 }
 

@@ -6,6 +6,11 @@
   "bin": {
     "intellexerunt": "./src/cli.ts"
   },
+  "files": [
+    "LICENSE",
+    "src/**/*.ts",
+    "skills/**/*"
+  ],
   "exports": {
     ".": "./src/index.ts",
     "./search": "./src/search.ts",
@@ -18,9 +23,6 @@
     "./dispatch": "./src/dispatch.ts",
     "./dynamic-context": "./src/dynamic-context.ts",
     "./skills": "./src/skills.ts"
-  },
-  "dependencies": {
-    "smol-toml": "^1.6.0"
   },
   "devDependencies": {
     "@types/node": "^24.6.0"
@@ -38,6 +40,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ObsidianWRK/UnderstandingCompany"
+    "url": "https://github.com/ObsidianWRK/intellexerunt"
   }
 }

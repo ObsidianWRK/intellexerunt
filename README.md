@@ -17,6 +17,8 @@ Search, orchestration, and agent skills for Claude Code, Cursor, Codex, and Devi
 | `cursor` | Cursor model types (MCP bridge) |
 | `skills` | Skill loader + NPX registry (17 skills with triggers) |
 
+Skill resolution for `loadSkill` / `listSkills`: optional `repoRoot` argument → `INTELLEXERUNT_SKILLS_ROOT` → bundled `skills/` in the package → `./skills` and `./.claude/skills` under the current working directory. See [skills/PLATFORM.md](skills/PLATFORM.md) for **TUI/IDE vs Claude Web vs ChatGPT**.
+
 ## Install
 
 ```bash
@@ -77,10 +79,12 @@ const config = buildCompactionConfig({ triggerTokens: 80_000 });
 ```typescript
 import { loadSkill, listSkills, SKILL_REGISTRY } from "@intellexerunt/plugin/skills";
 
-const skills = await listSkills();          // ["autoresearch", "deeper", ...]
+const skills = await listSkills();          // union of all discovered skill dirs
 const skill = await loadSkill("autoresearch"); // { name, content, frontmatter }
 console.log(SKILL_REGISTRY);               // NPX directory format
 ```
+
+Set `INTELLEXERUNT_SKILLS_ROOT` to your repo root when skills live only under `./skills` or `./.claude/skills` and the package runs with another cwd.
 
 ### Dynamic Context Injection
 
@@ -100,6 +104,8 @@ npx @intellexerunt/plugin context "dispatch routing"
 npx @intellexerunt/plugin route "build a login form"
 npx @intellexerunt/plugin skills
 npx @intellexerunt/plugin skills --registry
+npx @intellexerunt/plugin skills --export claude-web
+npx @intellexerunt/plugin skills --export chatgpt
 ```
 
 ## Skill Registry
@@ -147,4 +153,4 @@ npx @intellexerunt/plugin skills --registry
 
 ## License
 
-MIT
+See [LICENSE](LICENSE).

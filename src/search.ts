@@ -1,9 +1,7 @@
 /**
  * BM25 search — FTS5 chunks + symbol index.
- * The only search that works in production.
  */
 
-import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -12,7 +10,7 @@ import type { RankedResult } from "./types.ts";
 /** Tokenize query and build FTS5 MATCH expression. */
 export function toFtsQuery(query: string): { tokens: string[]; ftsExpr: string } {
   const tokens = query.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-  const ftsExpr = tokens.length === 0 ? '"tuc"' : tokens.map((t) => `${t}*`).join(" OR ");
+  const ftsExpr = tokens.length === 0 ? "" : tokens.map((t) => `${t}*`).join(" OR ");
   return { tokens, ftsExpr };
 }
 
@@ -20,7 +18,7 @@ export function toFtsQuery(query: string): { tokens: string[]; ftsExpr: string }
 export function kindMultiplier(filePath: string): number {
   const n = filePath;
   if (n.startsWith("packages/") && /\.(ts|tsx|js|jsx)$/.test(n)) return 1.0;
-  if (n === "tuc.config.toml" || n === "CLAUDE.md") return 1.15;
+  if (n === "app.config.toml" || n === "CLAUDE.md") return 1.15;
   if (/^[A-Z]+\.(md|json|toml)$/.test(n)) return 1.0;
   if (n.startsWith("scripts/") && !n.startsWith("scripts/test-")) return 1.0;
   if (n.startsWith("scripts/test-")) return 0.75;
@@ -30,7 +28,6 @@ export function kindMultiplier(filePath: string): number {
   if (n.startsWith("docs/")) return 0.9;
   if (n.startsWith(".cursor/")) return 0.5;
   if (n.startsWith(".codex/") || n.startsWith(".agents/")) return 0.45;
-  if (n.startsWith(".tuc-docs/")) return 0.7;
   return 0.7;
 }
 
@@ -116,36 +113,40 @@ function deduplicateAndScore(
 async function searchSymbols(query: string, top: number, repoRoot: string): Promise<RankedResult[]> {
   const dbPath = join(repoRoot, ".tuc", "index.sqlite");
   if (!existsSync(dbPath)) return [];
+  const { tokens, ftsExpr } = toFtsQuery(query);
+  if (!ftsExpr) return [];
   try {
     const { Database } = await import("bun:sqlite");
     const db = new Database(dbPath, { readonly: true });
-    const { tokens, ftsExpr } = toFtsQuery(query);
-    const rows = db
-      .query(`
+    try {
+      const rows = db
+        .query(`
         SELECT s.path, s.name, s.kind, s.line, s.signature, s.doc, bm25(symbols_fts) as rank
         FROM symbols_fts JOIN symbols s ON s.id = symbols_fts.symbol_id
         WHERE symbols_fts MATCH ? ORDER BY rank LIMIT ?
       `)
-      .all(ftsExpr, top * 2) as Array<{
-      path: string; name: string; kind: string; line: number;
-      signature: string; doc: string | null; rank: number;
-    }>;
-    db.close();
-    if (rows.length === 0) return [];
-    const ranks = rows.map((r) => r.rank);
-    const minRank = Math.min(...ranks);
-    const maxRank = Math.max(...ranks);
-    const range = Math.abs(maxRank - minRank) || 1;
-    return rows
-      .map((r) => {
-        const bm25Norm = Math.abs(r.rank - maxRank) / range;
-        const pathB = tokens.some((t) => r.name.toLowerCase().includes(t)) ? 0.3 : 0;
-        const score = (bm25Norm * 0.6 + pathB * 0.4) * 0.8;
-        const snippet = `${r.kind} ${r.signature}${r.doc ? ` — ${r.doc}` : ""}`;
-        return { path: `${r.path}:${r.line}`, score, source: "bm25" as const, snippet };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, top);
+        .all(ftsExpr, top * 2) as Array<{
+        path: string; name: string; kind: string; line: number;
+        signature: string; doc: string | null; rank: number;
+      }>;
+      if (rows.length === 0) return [];
+      const ranks = rows.map((r) => r.rank);
+      const minRank = Math.min(...ranks);
+      const maxRank = Math.max(...ranks);
+      const range = Math.abs(maxRank - minRank) || 1;
+      return rows
+        .map((r) => {
+          const bm25Norm = Math.abs(r.rank - maxRank) / range;
+          const pathB = tokens.some((t) => r.name.toLowerCase().includes(t)) ? 0.3 : 0;
+          const score = (bm25Norm * 0.6 + pathB * 0.4) * 0.8;
+          const snippet = `${r.kind} ${r.signature}${r.doc ? ` — ${r.doc}` : ""}`;
+          return { path: `${r.path}:${r.line}`, score, source: "bm25" as const, snippet };
+        })
+        .sort((a, b) => b.score - a.score)
+        .slice(0, top);
+    } finally {
+      db.close();
+    }
   } catch {
     return [];
   }
@@ -155,19 +156,23 @@ async function searchSymbols(query: string, top: number, repoRoot: string): Prom
 async function searchChunks(query: string, top: number, repoRoot: string): Promise<RankedResult[]> {
   const dbPath = join(repoRoot, ".tuc", "index.sqlite");
   if (!existsSync(dbPath)) return [];
+  const { tokens, ftsExpr } = toFtsQuery(query);
+  if (!ftsExpr) return [];
   try {
     const { Database } = await import("bun:sqlite");
     const db = new Database(dbPath, { readonly: true });
-    const { tokens, ftsExpr } = toFtsQuery(query);
-    const rows = db
-      .query(`
+    try {
+      const rows = db
+        .query(`
         SELECT c.path, c.title, c.body, bm25(chunks_fts) as rank
         FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.chunk_id
         WHERE chunks_fts MATCH ? ORDER BY rank LIMIT ?
       `)
-      .all(ftsExpr, 5000) as Array<{ path: string; title: string; body: string; rank: number }>;
-    db.close();
-    return deduplicateAndScore(rows, tokens, top);
+        .all(ftsExpr, 5000) as Array<{ path: string; title: string; body: string; rank: number }>;
+      return deduplicateAndScore(rows, tokens, top);
+    } finally {
+      db.close();
+    }
   } catch {
     return [];
   }

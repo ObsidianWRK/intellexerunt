@@ -4,13 +4,48 @@
  * This module makes them accessible to any surface programmatically.
  */
 
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+/** Bundled skills directory (next to `src/` in the published package). */
+const PACKAGE_SKILLS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "skills");
 
 export interface SkillDefinition {
   name: string;
   content: string;
   frontmatter: Record<string, unknown>;
+}
+
+/** Ordered bases: each is a directory whose children are skill folders containing SKILL.md. */
+function skillParentDirs(repoRoot?: string): string[] {
+  const ordered: string[] = [];
+  const pushPair = (root: string | undefined) => {
+    if (!root) return;
+    ordered.push(join(root, "skills"));
+    ordered.push(join(root, ".claude", "skills"));
+  };
+  pushPair(repoRoot);
+  pushPair(process.env.INTELLEXERUNT_SKILLS_ROOT);
+  ordered.push(PACKAGE_SKILLS_DIR);
+  pushPair(process.cwd());
+  const seen = new Set<string>();
+  return ordered.filter((p) => {
+    const k = resolve(p);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/** Absolute path to SKILL.md for `name`, or null if not found. */
+export function resolveSkillMarkdownPath(name: string, repoRoot?: string): string | null {
+  for (const base of skillParentDirs(repoRoot)) {
+    const md = join(base, name, "SKILL.md");
+    if (existsSync(md)) return md;
+  }
+  return null;
 }
 
 /** Parse YAML-ish frontmatter from a SKILL.md file. */
@@ -31,26 +66,40 @@ function parseFrontmatter(raw: string): { frontmatter: Record<string, unknown>; 
   return { frontmatter: fm, body: raw.slice(end + 3).trim() };
 }
 
-/** Load a skill by name from the .claude/skills/ directory. */
+/**
+ * Load a skill by name.
+ * Resolution order: `repoRoot` ({skills,.claude/skills}) → `INTELLEXERUNT_SKILLS_ROOT` →
+ * bundled package `skills/` → `process.cwd()` ({skills,.claude/skills}).
+ */
 export async function loadSkill(name: string, repoRoot?: string): Promise<SkillDefinition> {
-  const root = repoRoot ?? process.cwd();
-  const skillPath = join(root, ".claude", "skills", name, "SKILL.md");
+  const skillPath = resolveSkillMarkdownPath(name, repoRoot);
+  if (!skillPath) {
+    throw new Error(
+      `Skill "${name}" not found. Set INTELLEXERUNT_SKILLS_ROOT or copy skills into .claude/skills/.`,
+    );
+  }
   const raw = await readFile(skillPath, "utf-8");
   const { frontmatter, body } = parseFrontmatter(raw);
   return { name, content: body, frontmatter };
 }
 
-/** List all available skill names. */
+/** List skill names found across all configured skill parent directories. */
 export async function listSkills(repoRoot?: string): Promise<string[]> {
-  const root = repoRoot ?? process.cwd();
   const { readdir } = await import("node:fs/promises");
-  const skillsDir = join(root, ".claude", "skills");
-  try {
-    const entries = await readdir(skillsDir, { withFileTypes: true });
-    return entries.filter((e) => e.isDirectory()).map((e) => e.name).sort();
-  } catch {
-    return [];
+  const names = new Set<string>();
+  for (const base of skillParentDirs(repoRoot)) {
+    if (!existsSync(base)) continue;
+    try {
+      const entries = await readdir(base, { withFileTypes: true });
+      for (const e of entries) {
+        if (!e.isDirectory()) continue;
+        if (existsSync(join(base, e.name, "SKILL.md"))) names.add(e.name);
+      }
+    } catch {
+      /* ignore */
+    }
   }
+  return [...names].sort();
 }
 
 // ── Multi-Platform Export ──────────────────────────────────────────────
@@ -72,7 +121,7 @@ export interface PlatformSkill {
 }
 
 /** Skills that require shell/agent infra unavailable on ChatGPT. */
-const CHATGPT_EXCLUDED = new Set([
+export const CHATGPT_EXCLUDED_SKILLS = new Set([
   "orchestrate", "run-cursor", "run-codex", "run-devin", "run-bugbot",
   "setup-browser-cookies", "browse-url", "fetch-tweet",
 ]);
@@ -95,22 +144,19 @@ export async function exportSkill(
   platform: SkillPlatform,
   repoRoot?: string,
 ): Promise<PlatformSkill | null> {
-  if (platform === "chatgpt" && CHATGPT_EXCLUDED.has(name)) return null;
+  if (platform === "chatgpt" && CHATGPT_EXCLUDED_SKILLS.has(name)) return null;
 
   const skill = await loadSkill(name, repoRoot);
   const desc = typeof skill.frontmatter.description === "string"
     ? skill.frontmatter.description : name;
 
   if (platform === "agent-skills" || platform === "claude-web") {
-    // Native SKILL.md — read raw file content (frontmatter + body)
-    const root = repoRoot ?? process.cwd();
-    const raw = await (await import("node:fs/promises")).readFile(
-      join(root, ".claude", "skills", name, "SKILL.md"), "utf-8",
-    );
+    const mdPath = resolveSkillMarkdownPath(name, repoRoot);
+    if (!mdPath) return null;
+    const raw = await readFile(mdPath, "utf-8");
     return { name, description: desc, instructions: raw };
   }
 
-  // ChatGPT: strip CLI syntax, add preamble
   const body = stripForChatGPT(skill.content);
   const entry = SKILL_REGISTRY.find((s) => s.name === name);
   const triggers = entry?.triggers ?? [];
@@ -145,7 +191,7 @@ export async function exportAllSkills(
 /**
  * Package skills as zip files for Claude.ai upload.
  * Claude.ai Settings > Features accepts zip files containing SKILL.md + supporting files.
- * Writes one zip per skill to outDir.
+ * Writes one zip per skill to outDir (folder structure preserved).
  */
 export async function packageForClaudeWeb(
   outDir: string,
@@ -158,14 +204,19 @@ export async function packageForClaudeWeb(
   const execFileAsync = promisify(execFile);
 
   const root = repoRoot ?? process.cwd();
-  await fs.mkdir(outDir, { recursive: true });
+  const outDirAbs = path.resolve(outDir);
+  await fs.mkdir(outDirAbs, { recursive: true });
   const names = await listSkills(root);
   const zips: string[] = [];
 
   for (const name of names) {
-    const skillDir = path.join(root, ".claude", "skills", name);
-    const zipPath = path.join(outDir, `${name}.zip`);
-    await execFileAsync("zip", ["-r", "-j", zipPath, skillDir]);
+    const mdPath = resolveSkillMarkdownPath(name, root);
+    if (!mdPath) continue;
+    const skillDir = dirname(mdPath);
+    const parent = dirname(skillDir);
+    const folderName = basename(skillDir);
+    const zipPath = path.join(outDirAbs, `${name}.zip`);
+    await execFileAsync("zip", ["-r", zipPath, folderName], { cwd: parent });
     zips.push(zipPath);
   }
   return zips;
